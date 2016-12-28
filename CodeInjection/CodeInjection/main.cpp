@@ -118,23 +118,46 @@ void InjectCodeUsingThreadHijacking(HANDLE process, LPVOID func, int times, cons
 
 DWORD WINAPI HijackThread(LPVOID lpParameter)
 {
-    InjectCodeUsingThreadHijacking((HANDLE)lpParameter, &PrintString, 1, "Hijacked!\n");
+    InjectCodeUsingThreadHijacking((HANDLE)lpParameter, &PrintString, 1, "Thread hijacked!\n");
 
     return 0;
+}
+
+void InjectDll(HANDLE process, const wchar_t* path)
+{
+    // Write DLL name in memory
+    int pathLength = wcslen(path) + 1;
+    LPVOID remoteString = VirtualAllocEx(process, NULL, pathLength * 2, MEM_COMMIT, PAGE_EXECUTE);
+    WriteProcessMemory(process, remoteString, path, pathLength * 2, NULL);
+
+    // Get address of LoadLibraryW
+    HMODULE module = GetModuleHandleA("kernel32.dll");
+    LPVOID func = GetProcAddress(module, "LoadLibraryW");
+
+    // Create thread
+    HANDLE thread = CreateRemoteThread(process, NULL, NULL, (LPTHREAD_START_ROUTINE)func, remoteString, NULL, NULL);
+
+    // Wait for thread to finish
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
 }
 
 int main()
 {
     std::cout << "Injecting code using thread injection\n";
     HANDLE process = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
-    InjectCodeUsingThreadInjection(process, &PrintString, 1, "Injected!\n");
+    InjectCodeUsingThreadInjection(process, &PrintString, 1, "Thread injected!\n");
 
     // Hijack a secondary thread because hijacking current thread won't work
     std::cout << "Injecting code using thread hijacking\n";
     HANDLE thread = CreateThread(NULL, 0, HijackThread, process, 0, NULL);
-        
-    // Wait for thread to complete
     WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+
+    std::cout << "Injecting code using DLL injection\n";
+    InjectDll(process, L"CodeInjectionDll.dll");
+
+    CloseHandle(process);
 
     return 0;
 }
