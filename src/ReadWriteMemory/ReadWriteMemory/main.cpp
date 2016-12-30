@@ -58,7 +58,7 @@ template<typename T>
 T ReadMemory(HANDLE process, LPVOID address)
 {
     T value;
-    ReadProcessMemory(process, address, sizeof(T), NULL);
+    ReadProcessMemory(process, address, &value, sizeof(T), NULL);
     return value;
 }
 
@@ -76,17 +76,17 @@ DWORD ProtectMemory(HANDLE process, LPVOID address, DWORD newProtection)
     return oldProtection;
 }
 
-int main(int argc, char** argv)
+int main()
 {
     // Get current window name
     wchar_t windowName[1024];
     GetConsoleTitle(&windowName[0], 1024);
 
     DWORD pid = GetProcessIdFromWindowName(windowName);
-    printf("PID from window name is %d\n", pid);
+    printf("PID from current window name is %d\n", pid);
 
     pid = GetProcessIdFromFileName(L"ReadWriteMemory.exe");
-    printf("PID from file name is %d\n", pid);
+    printf("PID from current file name is %d\n", pid);
 
     HANDLE process = OpenProcess(
         PROCESS_VM_OPERATION |
@@ -95,9 +95,39 @@ int main(int argc, char** argv)
         PROCESS_CREATE_THREAD,
         FALSE,
         pid);
-
+    
     DWORD baseAddress = GetBaseAddress(process);
-    printf("PID %d base address is 0x%08X\n", pid, baseAddress);
+    printf("PID %d base address is 0x%016X\n", pid, baseAddress);
 
+    // Don't forget to start the remote process
+    // TODO: Automatically start remote process
+    pid = GetProcessIdFromFileName(L"ReadWriteMemoryExe.exe");
+    printf("PID from remote file name is %d\n", pid);
+
+    process = OpenProcess(
+        PROCESS_VM_OPERATION |
+        PROCESS_VM_READ |
+        PROCESS_VM_WRITE |
+        PROCESS_CREATE_THREAD,
+        FALSE,
+        pid);
+
+    baseAddress = GetBaseAddress(process);
+    printf("PID %d base address is 0x%016X\n", pid, baseAddress);
+
+    // You'll need to rediscover this addresses if you recompile the remote process
+    LPVOID secretAddress = (LPVOID)0x199004;
+
+    int secret = ReadMemory<int>(process, secretAddress);
+
+    printf("Secret is %d\n", secret);
+
+    WriteMemory<int>(process, secretAddress, 1234567890);
+    int newSecret = ReadMemory<int>(process, secretAddress);
+
+    printf("New secret is %d\n", newSecret);
+
+    // Don't forget to kill the remote process
+    // TODO: Automatically kill remote process
     return 0;
 }
